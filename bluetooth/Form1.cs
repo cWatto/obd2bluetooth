@@ -18,18 +18,34 @@ namespace bluetooth
 {
     public partial class Form1 : Form
     {
+
+        
+        /*
+         * pid mode 1 is live data
+         */
+        const byte PID_MODE = 0x01;
+        /*
+         * All respones from OBD reader are marked with 0x41 or A character
+         */
+        const byte RESPONSE_MARKER = 0x41;
+
+
+        private byte EOF_MARKER = Convert.ToByte('>');
+        /*
+            Encoding: ASCII
+
+         */
         public Form1()
         {
+            // Tells the OBD reader to provide current data
+
             //InitializeComponent();
 
 
             BluetoothClient btClient = new BluetoothClient();
             List<string> btItems = new List<String>();
             BluetoothDeviceInfo selectedDevice = null;
-
-
-            
-
+    
             while (selectedDevice == null)
             {
                 Console.WriteLine("Searching for BT Devices");
@@ -62,6 +78,7 @@ namespace bluetooth
                     
                 }
             }
+
             
             Console.WriteLine($"Attempting client connection to: {selectedDevice.DeviceName}");
             btClient.Connect(selectedDevice.DeviceAddress, BluetoothService.SerialPort);
@@ -70,36 +87,71 @@ namespace bluetooth
             NetworkStream stream = btClient.GetStream();
             StreamWriter writer = new StreamWriter(stream, System.Text.Encoding.UTF8);
             //EchoOff Command
-            Console.WriteLine("Sending EchoOff Command");
-            writer.WriteLine(Encoding.ASCII.GetBytes("AT E0\r"));
-            writer.Flush();
-            Thread.Sleep(500);
+            Console.WriteLine("Sending INIT Command");
+            SendCommand("ATZ", writer);
+            Thread.Sleep(1000);
+            ReadCommand(stream);
 
+            Console.WriteLine("Sending ECHO OFF Command");
+            SendCommand("ATE0", writer);
+            Thread.Sleep(1000);
+            ReadCommand(stream);
 
+            Console.WriteLine("Sending HEADERS ON Command");
+            SendCommand("ATH1", writer);
+            Thread.Sleep(1000);
+            ReadCommand(stream);
+
+            Console.WriteLine("Sending LINE FEEDS OFF Command");
+            SendCommand("ATL0", writer);
+            Thread.Sleep(1000);
+            ReadCommand(stream);
             
-            int b = 0;
-            //reads until > is found or end of stream
-            List<char> resp = new List<char>();
-            while((b = stream.ReadByte()) > -1)
-            {
-                char c = Convert.ToChar(b);
-                if( c == '>')
-                {
-                    break;
-                }
-
-                resp.Add(c);
-            }
-
-            Console.WriteLine($"Response!: {new string(resp.ToArray())}");
-
-
             //writer.WriteLine(Encoding.ASCII.GetBytes("AT L0\r"));
 
 
             //stream.read
 
         }
+        private void SendCommand(string command, StreamWriter stream)
+        {
+            //Formats into uppercase hexadecimal, adds termination line
+            string request = (PID_MODE.ToString() + command + "\r");
+            byte[] buffer = Encoding.ASCII.GetBytes(request);
+            Console.WriteLine($"Sending PID Request: {request}");
+            stream.Write(buffer);
+        }
+
+        private string ReadCommand(NetworkStream stream)
+        {
+            byte[] readBuffer = new byte[1024];
+
+            int bytesRead = stream.Read(readBuffer, 0, readBuffer.Length);
+
+            List<char> finalMessage = new List<char>();
+
+
+            for (int i = 0; i < bytesRead; i++){
+                char c = (char)readBuffer[i];
+                
+                if( c == '\r')
+                {
+                    break;
+                }
+
+                if( c != (char)0x00)
+                {
+                    finalMessage.Add(c);
+                }
+            }
+
+            char[] responseCharArray  = finalMessage.ToArray();
+            var test = new string(responseCharArray);
+
+            Console.WriteLine($"Unconverted: {test}");
+            return "";
+        }
+
 
         private void Form1_Load(object sender, EventArgs e)
         {
